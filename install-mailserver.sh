@@ -321,32 +321,40 @@ then
 	.ifdef SPAM_REJECT_SCORE
 	# Permanently reject spam
 	  deny
-	    spam = Debian-exim:true
-	    condition = ${if >{$spam_score_int}{${eval10:10*${sg{SPAM_REJECT_SCORE}{[.].*}{}}}}{1}{0}}
-	    message = Spam score too high ($spam_score)
-	    log_message = spam rejected (score $spam_score) from <$sender_address> to <$recipients>.
+	    !authenticated = *
+	    !acl           = acl_local_deny_exceptions
+	    spam           = Debian-exim:true
+	    condition      = ${if >{$spam_score_int}{${eval10:10*${sg{SPAM_REJECT_SCORE}{[.].*}{}}}}{1}{0}}
+	    message        = Spam score too high ($spam_score)
+	    log_message    = spam rejected (score $spam_score) from <$sender_address> to <$recipients>.
 	.endif
 
 	.ifdef SPAM_GREYLIST_SCORE
 	# Temporarily reject greylisted
 	  defer
-	    message = $sender_host_address is not yet authorized to deliver \
-	              mail from <$sender_address> to <$recipients>. \
-	              Please try later.
-	    log_message = greylisted (score $spam_score) from <$sender_address> to <$recipients>.
-	    spam = Debian-exim:true
-	    condition = ${if >={$spam_score_int}{${eval10:10*${sg{SPAM_GREYLIST_SCORE}{[.].*}{}}}}{1}{0}}
-	    condition = ${if eq {${acl_m_greylisted}}{1} }
+	    message        = $sender_host_address is not yet authorized to deliver \
+	                     mail from <$sender_address> to <$recipients>. \
+	                     Please try later.
+	    log_message    = greylisted (score $spam_score) from <$sender_address> to <$recipients>.
+	    !authenticated = *
+	    !acl           = acl_local_deny_exceptions
+	    spam           = Debian-exim:true
+	    condition      = ${if >={$spam_score_int}{${eval10:10*${sg{SPAM_GREYLIST_SCORE}{[.].*}{}}}}{1}{0}}
+	    condition      = ${if eq {${acl_m_greylisted}}{1} }
 	.endif
 
 	  warn
-	    spam       = Debian-exim:true
-	    add_header = X-Spam-Score: $spam_score ($spam_bar)
-	    add_header = X-Spam-Report: $spam_report
+	    !authenticated = *
+	    !acl           = acl_local_deny_exceptions
+	    spam           = Debian-exim:true
+	    add_header     = X-Spam-Score: $spam_score ($spam_bar)
+	    add_header     = X-Spam-Report: $spam_report
 
 	  warn
-	    spam       = Debian-exim
-	    add_header = X-Spam-Flag: YES
+	    !authenticated = *
+	    !acl           = acl_local_deny_exceptions
+	    spam           = Debian-exim
+	    add_header     = X-Spam-Flag: YES
 	EOF
     chown root:root /etc/exim4/check_data_local_acl
     chmod 644 /etc/exim4/check_data_local_acl

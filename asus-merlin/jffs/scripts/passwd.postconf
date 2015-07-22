@@ -1,0 +1,11 @@
+#!/bin/sh
+CONFIG="$1"
+
+grep -q '^sshd:' "$CONFIG" && exit
+
+i=74
+until ! `grep -qE "^[^:]+:x:${i}:" "$CONFIG"`
+do
+        i=$(($i+1))
+done
+echo "sshd:x:${i}:${i}:Privilege-separated SSH:/opt/var/empty:/usr/sbin/nologin" >> "$CONFIG"

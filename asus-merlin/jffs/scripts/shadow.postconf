@@ -1,0 +1,4 @@
+#!/bin/sh
+CONFIG="$1"
+
+sed -i 's/^\(admin:.*\):0:$/\1::/' "$CONFIG"

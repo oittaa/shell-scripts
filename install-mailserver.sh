@@ -187,9 +187,9 @@ else
 fi
 
 # For Debian Jessie, make sure the new sa-compile package is installed
-which sa-compile > /dev/null || apt-get -q -y install sa-compile 
+which sa-compile > /dev/null || apt-get -q -y install sa-compile
 
-if [ "1" = "$INITIALIZE_SPAM_CONFIG" -o "1" = "$FORCE" ]
+if [ "1" = "$INITIALIZE_SPAM_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Configuring SpamAssassin ###"
 
@@ -197,7 +197,7 @@ then
     sed -i -e 's/^ENABLED=0/ENABLED=1/' -e 's/^CRON=0/CRON=1/' /etc/default/spamassassin
     su -s /bin/sh -c "cd; razor-admin -create; razor-admin -discover; pyzor discover" Debian-exim
 
-    # Speedup by compilation of ruleset to native code needs to be enabled 
+    # Speedup by compilation of ruleset to native code needs to be enabled
     # manually in Debian releases older than Jessie.
     grep -q '^loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody' /etc/spamassassin/*.pre || \
         sed -i 's/^# \(loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody\)/\1/' /etc/spamassassin/v320.pre
@@ -209,7 +209,7 @@ then
     fi
 fi
 
-if [ "1" = "$INITIALIZE_CLAMAV_CONFIG" -o "1" = "$FORCE" ]
+if [ "1" = "$INITIALIZE_CLAMAV_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Configuring ClamAV ###"
 
@@ -222,7 +222,7 @@ then
 fi
 
 # Configure Exim to listen on all interfaces, and set relay and recipient domains.
-if [ "1" = "$INITIALIZE_EXIM_CONFIG" -o "1" = "$FORCE" ]
+if [ "1" = "$INITIALIZE_EXIM_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Configuring Exim ###"
 
@@ -233,7 +233,7 @@ then
 fi
 
 # Enable automatic upgrades
-if [ "1" = "$INITIALIZE_APT_CONFIG" -o "1" = "$FORCE" ]
+if [ "1" = "$INITIALIZE_APT_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Enabling Unattended Upgrades ###"
 
@@ -246,7 +246,7 @@ then
 fi
 
 ##########BEGIN# Create macro and acl files to /etc/exim4/ ##########
-if [ ! -f /etc/exim4/exim4.conf.localmacros -o "1" = "$FORCE" ]
+if [ ! -f /etc/exim4/exim4.conf.localmacros ] || [ "1" = "$FORCE" ]
 then
     cat > /etc/exim4/exim4.conf.localmacros <<- "EOF"
 	CHECK_RCPT_LOCAL_ACL_FILE = /etc/exim4/check_rcpt_local_acl
@@ -271,7 +271,7 @@ then
     chmod 644 /etc/exim4/exim4.conf.localmacros
 fi
 
-if [ ! -f /etc/exim4/check_rcpt_local_acl -o "1" = "$FORCE" ]
+if [ ! -f /etc/exim4/check_rcpt_local_acl ] || [ "1" = "$FORCE" ]
 then
     cat > /etc/exim4/check_rcpt_local_acl <<- "EOF"
 	.ifdef VERIFY_RECIPIENTS
@@ -309,7 +309,7 @@ then
     chmod 644 /etc/exim4/check_rcpt_local_acl
 fi
 
-if [ ! -f /etc/exim4/check_data_local_acl -o "1" = "$FORCE" ]
+if [ ! -f /etc/exim4/check_data_local_acl ] || [ "1" = "$FORCE" ]
 then
     cat > /etc/exim4/check_data_local_acl <<- "EOF"
 	# Malware check

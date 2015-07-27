@@ -49,6 +49,6 @@ do
   echo "OUTPUT: bitrate: $BR - file: $OUTPUTFILE"
   ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 1 -b:v "$BR" -threads "$CORES" -speed 4 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -an -passlogfile "$LOGFILE" -f webm -y /dev/null
   ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 2 -b:v "$BR" -threads "$CORES" -speed 1 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -c:a libopus -b:a 64k -passlogfile "$LOGFILE" -f webm -y -- "$OUTPUTFILE"
-  rm -- "${LOGFILE}-*.log"
+  rm -- "${LOGFILE}"-*.log
 done
 rm -r -- "$LOGDIR"

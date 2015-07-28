@@ -36,14 +36,17 @@ do
 
   echo "INPUT: $WIDTH x $HEIGHT bitrate:$BIT_RATE"
 
-  if ([ $WIDTH -ge 1920 ] || [ $HEIGHT -ge 1080 ]) && [ $BIT_RATE -ge 4000000 ]
+  if ([ $WIDTH -ge 1920 ] || [ $HEIGHT -ge 1080 ]) && [ $BIT_RATE -ge 6000000 ]
   then
     BR=3M
-  elif ([ $WIDTH -ge 1280 ] || [ $HEIGHT -ge 720 ]) && [ $BIT_RATE -ge 3000000 ]
+  elif ([ $WIDTH -ge 1280 ] || [ $HEIGHT -ge 720 ]) && [ $BIT_RATE -ge 4000000 ]
   then
     BR=2M
-  else
+  elif ([ $WIDTH -ge 640 ] || [ $HEIGHT -ge 480 ]) && [ $BIT_RATE -ge 2000000 ]
+  then
     BR=1M
+  else
+    BR=700k
   fi
 
   echo "OUTPUT: bitrate: $BR - file: $OUTPUTFILE"

@@ -3,6 +3,13 @@
 # 2015-07-27 Parameters for 2-pass VP9 encoding:
 # http://wiki.webmproject.org/ffmpeg/vp9-encoding-guide
 
+VERBOSITY="error"
+if [ "-v" = "$1" ] || [ "--verbose" = "$1" ]
+then
+  VERBOSITY="info"
+  shift
+fi
+
 if [ $# -eq 0 ]
 then
   echo "Please give input files as parameters"
@@ -33,6 +40,10 @@ do
   HEIGHT=$(echo "$TEMP" | sed -n -e 's/^height=//p')
   TEMP=$(ffprobe -v error -show_format "$INPUTFILE")
   BIT_RATE=$(echo "$TEMP" | sed -n -e 's/^bit_rate=//p')
+  if [ "N/A" = "$BIT_RATE" ]
+  then
+    BIT_RATE=$(ffmpeg -nostats -i "$INPUTFILE" -vcodec copy -f rawvideo -y /dev/null 2>&1 | sed -n -e 's/.*bitrate=\([0-9]*\)[.].*/\1/p')000
+  fi
 
   echo "INPUT: ${WIDTH}x${HEIGHT} ${BIT_RATE}bps \"${INPUTFILE}\""
 
@@ -50,8 +61,8 @@ do
   fi
 
   echo "OUTPUT: ${WIDTH}x${HEIGHT} ${BR}bps \"${OUTPUTFILE}\""
-  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 1 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 4 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -an -passlogfile "$LOGFILE" -f webm -y /dev/null
-  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 2 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 1 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -c:a libopus -b:a 64k -passlogfile "$LOGFILE" -f webm -y -- "$OUTPUTFILE"
+  ffmpeg -loglevel $VERBOSITY -i "$INPUTFILE" -c:v libvpx-vp9 -pass 1 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 4 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -an -passlogfile "$LOGFILE" -f webm -y /dev/null
+  ffmpeg -loglevel $VERBOSITY -i "$INPUTFILE" -c:v libvpx-vp9 -pass 2 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 1 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -c:a libopus -b:a 64k -passlogfile "$LOGFILE" -f webm -y -- "$OUTPUTFILE"
   rm -- "${LOGFILE}"-*.log
 done
 rm -r -- "$LOGDIR"

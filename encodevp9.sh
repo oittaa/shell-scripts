@@ -34,7 +34,7 @@ do
   TEMP=$(ffprobe -v error -show_format "$INPUTFILE")
   BIT_RATE=$(echo "$TEMP" | sed -n -e 's/^bit_rate=//p')
 
-  echo "INPUT: $WIDTH x $HEIGHT bitrate:$BIT_RATE"
+  echo "INPUT: ${WIDTH}x${HEIGHT} ${BIT_RATE}bps \"${INPUTFILE}\""
 
   if ([ $WIDTH -ge 1920 ] || [ $HEIGHT -ge 1080 ]) && [ $BIT_RATE -ge 6000000 ]
   then
@@ -49,9 +49,9 @@ do
     BR=700k
   fi
 
-  echo "OUTPUT: bitrate: $BR - file: $OUTPUTFILE"
-  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 1 -b:v "$BR" -threads "$CORES" -speed 4 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -an -passlogfile "$LOGFILE" -f webm -y /dev/null
-  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 2 -b:v "$BR" -threads "$CORES" -speed 1 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -c:a libopus -b:a 64k -passlogfile "$LOGFILE" -f webm -y -- "$OUTPUTFILE"
+  echo "OUTPUT: ${WIDTH}x${HEIGHT} ${BR}bps \"${OUTPUTFILE}\""
+  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 1 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 4 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -an -passlogfile "$LOGFILE" -f webm -y /dev/null
+  ffmpeg -i "$INPUTFILE" -c:v libvpx-vp9 -pass 2 -b:v "$BR" -keyint_min 25 -g 250 -threads "$CORES" -speed 1 -tile-columns 6 -frame-parallel 1 -auto-alt-ref 1 -lag-in-frames 25  -c:a libopus -b:a 64k -passlogfile "$LOGFILE" -f webm -y -- "$OUTPUTFILE"
   rm -- "${LOGFILE}"-*.log
 done
 rm -r -- "$LOGDIR"

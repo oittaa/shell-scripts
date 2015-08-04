@@ -47,7 +47,13 @@ do
 
   echo "INPUT: ${WIDTH}x${HEIGHT} ${BIT_RATE}bps \"${INPUTFILE}\""
 
-  if ([ $WIDTH -ge 1920 ] || [ $HEIGHT -ge 1080 ]) && [ $BIT_RATE -ge 6000000 ]
+  if ([ $WIDTH -ge 3840 ] || [ $HEIGHT -ge 2160 ]) && [ $BIT_RATE -ge 24000000 ]
+  then
+    BR=12M
+  elif ([ $WIDTH -ge 2560 ] || [ $HEIGHT -ge 1440 ]) && [ $BIT_RATE -ge 12000000 ]
+  then
+    BR=6M
+  elif ([ $WIDTH -ge 1920 ] || [ $HEIGHT -ge 1080 ]) && [ $BIT_RATE -ge 6000000 ]
   then
     BR=3M
   elif ([ $WIDTH -ge 1280 ] || [ $HEIGHT -ge 720 ]) && [ $BIT_RATE -ge 4000000 ]

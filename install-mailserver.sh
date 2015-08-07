@@ -20,7 +20,7 @@
 # You might want to edit /etc/exim4/exim4.conf.localmacros afterwards
 # and run 'dpkg-reconfigure exim4-config' to configure exim4.
 #
-# Tested with Debian Wheezy, Debian Jessie and Ubuntu 14.04.
+# Tested with Debian 8.0 (Jessie) and Ubuntu 14.04 (Trusty Tahr).
 
 ######################################################################
 
@@ -361,8 +361,45 @@ then
 fi
 ##########END# Create macro and acl files to /etc/exim4/ ##########
 
+# Secure SSH configuration
+# https://stribika.github.io/2015/01/04/secure-secure-shell.html
+if [ -f /etc/ssh/sshd_config ]
+then
+    echo "### Configuring SSH Server ###"
+    sed -i 's;^\s*\(HostKey\s\+/etc/ssh/ssh_host_\(dsa\|ecdsa\)_key\)$;#\1;' /etc/ssh/sshd_config
+    KEYSIZE=`test -r /etc/ssh/ssh_host_rsa_key.pub && ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key.pub | awk '{print $1}'`
+    if [ -f /etc/ssh/ssh_host_rsa_key.pub ]
+    then
+        KEYSIZE=$(ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key.pub | awk '{print $1}')
+        if [ 4096 -gt "$KEYSIZE" ]
+        then
+            echo "Removing old insecure RSA key and generating a new one."
+            rm /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_rsa_key
+            ssh-keygen -t rsa -b 4096 -f /etc/ssh/ssh_host_rsa_key -q -N "" < /dev/null
+        fi
+    fi
+    grep -q ^KexAlgorithms /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
+    grep -q ^Ciphers /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" >> /etc/ssh/sshd_config
+    grep -q ^MACs /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
+    if [ -f /etc/ssh/moduli ]
+    then
+        awk '$5 > 2000' /etc/ssh/moduli > "${HOME}/moduli"
+        LINES=$(wc -l "${HOME}/moduli" | awk '{print $1}')
+    else
+        LINES=0
+    fi
+    if [ $LINES -eq 0 ]
+    then
+        echo  "Generating \"/etc/ssh/moduli\". This might take a while."
+        ssh-keygen -G "${HOME}/moduli.all" -b 4096
+        ssh-keygen -T "${HOME}/moduli" -f "${HOME}/moduli.all"
+        rm "${HOME}/moduli.all"
+    fi
+    cmp --silent /etc/ssh/moduli "${HOME}/moduli" && rm "${HOME}/moduli" || mv "${HOME}/moduli" /etc/ssh/moduli
+    restart_service ssh
+fi
+
 # Generate Exim configuration files and restart the services.
-echo "Restarting services..."
 restart_service spamassassin
 restart_service clamav-daemon
 /usr/sbin/update-exim4.conf

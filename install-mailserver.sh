@@ -367,7 +367,6 @@ if [ -f /etc/ssh/sshd_config ]
 then
     echo "### Configuring SSH Server ###"
     sed -i 's;^\s*\(HostKey\s\+/etc/ssh/ssh_host_\(dsa\|ecdsa\)_key\)$;#\1;' /etc/ssh/sshd_config
-    KEYSIZE=`test -r /etc/ssh/ssh_host_rsa_key.pub && ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key.pub | awk '{print $1}'`
     if [ -f /etc/ssh/ssh_host_rsa_key.pub ]
     then
         KEYSIZE=$(ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key.pub | awk '{print $1}')

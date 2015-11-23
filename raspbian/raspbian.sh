@@ -1,5 +1,8 @@
 #!/bin/sh
 
+SSHPUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0AsE3uu/ia2F5jlY8Uq9CcgUjEDp/eKvP/Kn9wAyES"
+PINGTESTIP="8.8.8.8"
+
 if ! which raspi-config >/dev/null
 then
   printf "raspi-config doesn't exist. This script only works on Raspbian. https://www.raspbian.org/\n"
@@ -24,16 +27,26 @@ fi
 if modprobe -q bcm2708-rng && dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096
 then
   grep -q "^bcm2708-rng" /etc/modules || echo "bcm2708-rng" >> /etc/modules
-  while ! ping -q -W 5 -c 1 8.8.8.8 >/dev/null
+  while ! ping -q -W 5 -c 1 ${PINGTESTIP} >/dev/null
   do
     echo "waiting for a network connection ..."
     sleep 1
   done
-  apt-get -q update
+  DATE1=$(stat -c %y /var/cache/apt/pkgcache.bin | cut -d' ' -f1)
+  DATE2=$(date +"%Y-%m-%d")
+  [ "${DATE1}" = "${DATE2}" ] || apt-get -q update
   apt-get -q -y install rng-tools
 fi
 
 ### Configure SSH Server securely - https://stribika.github.io/2015/01/04/secure-secure-shell.html
+# If authorized_keys doesn't exist, create it and add the key
+if [ ! -e ~pi/.ssh/authorized_keys ]
+then
+  mkdir -p -m 700 ~pi/.ssh
+  chown pi:pi ~pi/.ssh
+  echo ${SSHPUBKEY} >>~pi/.ssh/authorized_keys
+  chown pi:pi ~pi/.ssh/authorized_keys
+fi
 # Regenerate keys, because now we should have enough entropy
 if [ -e /var/log/regen_ssh_keys.log ]
 then
@@ -53,13 +66,31 @@ grep -q "^Ciphers " /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@open
 grep -q "^MACs " /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
 # Disable DSA and ECDSA server keys
 sed -i 's/^\(HostKey \/etc\/ssh\/ssh_host_\(ec\)\?dsa_key\)$/#\1/' /etc/ssh/sshd_config
-# Moduli
+# Disable password authentication
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Use primes greater than 2000 bits in moduli file
 if [ -e /etc/ssh/moduli ] && \
    awk '$5 <= 2000' /etc/ssh/moduli | grep -q " 2 " && \
    awk '$5 > 2000' /etc/ssh/moduli | grep -q " 2 "
 then
   awk '$5 > 2000' /etc/ssh/moduli > "${HOME}/moduli"
   mv "${HOME}/moduli" /etc/ssh/moduli
+fi
+systemctl restart ssh
+
+### Tor and hidden SSH service
+if [ ! -e /etc/tor/torrc ]
+then
+  apt-get -q -y install tor && \
+  echo "HiddenServiceDir /var/lib/tor/hidden_service_ssh" >>/etc/tor/torrc && \
+  echo "HiddenServicePort 22 127.0.0.1:22" >>/etc/tor/torrc && \
+  systemctl reload tor && \
+  while [ ! -e /var/lib/tor/hidden_service_ssh/hostname ]
+  do
+    echo "waiting for Tor hidden service ..."
+    sleep 1
+  done && \
+  cat /var/lib/tor/hidden_service_ssh/hostname
 fi
 
 ### Enable camera and disable camera led

@@ -3,7 +3,7 @@
 SSHPUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0AsE3uu/ia2F5jlY8Uq9CcgUjEDp/eKvP/Kn9wAyES"
 PINGTESTIP="8.8.8.8"
 
-if ! which raspi-config >/dev/null
+if ! which raspi-config > /dev/null
 then
   printf "raspi-config doesn't exist. This script only works on Raspbian. https://www.raspbian.org/\n"
   exit 1
@@ -19,15 +19,15 @@ fi
 if lsusb | grep -q "ZTE WCDMA Technologies MSM" && \
    ip addr | grep -qF "inet 192.168.0."
 then
-  curl -s --header "Referer: http://192.168.0.1/index.html" "http://192.168.0.1/goform/goform_set_cmd_process?goformId=CONNECT_NETWORK" >/dev/null
-  curl -s --header "Referer: http://192.168.0.1/index.html" "http://192.168.0.1/goform/goform_set_cmd_process?goformId=SET_CONNECTION_MODE&ConnectionMode=auto_dial" >/dev/null
+  curl -s --header "Referer: http://192.168.0.1/index.html" "http://192.168.0.1/goform/goform_set_cmd_process?goformId=CONNECT_NETWORK" > /dev/null
+  curl -s --header "Referer: http://192.168.0.1/index.html" "http://192.168.0.1/goform/goform_set_cmd_process?goformId=SET_CONNECTION_MODE&ConnectionMode=auto_dial" > /dev/null
 fi
 
 ### Enable Hardware Random Number Generator
 if modprobe -q bcm2708-rng && dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096
 then
   grep -q "^bcm2708-rng" /etc/modules || echo "bcm2708-rng" >> /etc/modules
-  while ! ping -q -W 5 -c 1 ${PINGTESTIP} >/dev/null
+  while ! ping -q -W 5 -c 1 ${PINGTESTIP} > /dev/null
   do
     echo "waiting for a network connection ..."
     sleep 1
@@ -53,7 +53,7 @@ then
   while [ -e /var/log/regen_ssh_keys.log ] && \
         ! grep -q "^finished" /var/log/regen_ssh_keys.log
   do
-    echo "regen_ssh_keys is still running ..."
+    echo "regenerate_ssh_host_keys is still running ..."
     sleep 1
   done
   yes | ssh-keygen -q -N '' -t ed25519 -f /etc/ssh/ssh_host_ed25519_key
@@ -64,7 +64,7 @@ fi
 grep -q "^KexAlgorithms " /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
 grep -q "^Ciphers " /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" >> /etc/ssh/sshd_config
 grep -q "^MACs " /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
-# Disable DSA and ECDSA server keys
+# Disable DSA and ECDSA host keys
 sed -i 's/^\(HostKey \/etc\/ssh\/ssh_host_\(ec\)\?dsa_key\)$/#\1/' /etc/ssh/sshd_config
 # Disable password authentication
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
@@ -82,8 +82,8 @@ systemctl restart ssh
 if [ ! -e /etc/tor/torrc ]
 then
   apt-get -q -y install tor && \
-  echo "HiddenServiceDir /var/lib/tor/hidden_service_ssh" >>/etc/tor/torrc && \
-  echo "HiddenServicePort 22 127.0.0.1:22" >>/etc/tor/torrc && \
+  echo "HiddenServiceDir /var/lib/tor/hidden_service_ssh" >> /etc/tor/torrc && \
+  echo "HiddenServicePort 22 127.0.0.1:22" >> /etc/tor/torrc && \
   systemctl reload tor && \
   while [ ! -e /var/lib/tor/hidden_service_ssh/hostname ]
   do
@@ -103,4 +103,5 @@ else
 fi
 
 ### Expand the root filesystem to fill the whole card
+# The original root image size is 4031552
 df / | grep -q " 4031552 " && raspi-config nonint do_expand_rootfs

@@ -1,7 +1,19 @@
 #!/bin/sh
 
 SSHPUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0AsE3uu/ia2F5jlY8Uq9CcgUjEDp/eKvP/Kn9wAyES"
-PINGTESTIP="8.8.8.8"
+NETWORKTEST=$(grep -v '^#' /etc/apt/sources.list.d/* /etc/apt/sources.list 2> /dev/null | awk '{ print $2 }' | head -n1)
+
+inst_pkg () {
+  while ! curl -s "${NETWORKTEST}" > /dev/null
+  do
+    echo "waiting for a network connection ..."
+    sleep 1
+  done
+  DATE1=$(stat -c %y /var/cache/apt/pkgcache.bin | cut -d' ' -f1)
+  DATE2=$(date +"%Y-%m-%d")
+  [ "${DATE1}" = "${DATE2}" ] || apt-get -q update
+  apt-get -q -y install "${1}"
+}
 
 if ! which raspi-config > /dev/null
 then
@@ -24,18 +36,13 @@ then
 fi
 
 ### Enable Hardware Random Number Generator
-if modprobe -q bcm2708-rng && dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096
+if modprobe -q bcm2708-rng && dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096 2> /dev/null
 then
   grep -q "^bcm2708-rng" /etc/modules || echo "bcm2708-rng" >> /etc/modules
-  while ! ping -q -W 5 -c 1 ${PINGTESTIP} > /dev/null
-  do
-    echo "waiting for a network connection ..."
-    sleep 1
-  done
-  DATE1=$(stat -c %y /var/cache/apt/pkgcache.bin | cut -d' ' -f1)
-  DATE2=$(date +"%Y-%m-%d")
-  [ "${DATE1}" = "${DATE2}" ] || apt-get -q update
-  apt-get -q -y install rng-tools
+  if [ ! -e /etc/default/rng-tools ]
+  then
+    inst_pkg rng-tools
+  fi
 fi
 
 ### Configure SSH Server securely - https://stribika.github.io/2015/01/04/secure-secure-shell.html
@@ -44,7 +51,7 @@ if [ ! -e ~pi/.ssh/authorized_keys ]
 then
   mkdir -p -m 700 ~pi/.ssh
   chown pi:pi ~pi/.ssh
-  echo ${SSHPUBKEY} >>~pi/.ssh/authorized_keys
+  echo ${SSHPUBKEY} >> ~pi/.ssh/authorized_keys
   chown pi:pi ~pi/.ssh/authorized_keys
 fi
 # Regenerate keys, because now we should have enough entropy
@@ -81,16 +88,10 @@ systemctl restart ssh
 ### Tor and hidden SSH service
 if [ ! -e /etc/tor/torrc ]
 then
-  apt-get -q -y install tor && \
+  inst_pkg tor && \
   echo "HiddenServiceDir /var/lib/tor/hidden_service_ssh" >> /etc/tor/torrc && \
   echo "HiddenServicePort 22 127.0.0.1:22" >> /etc/tor/torrc && \
-  systemctl reload tor && \
-  while [ ! -e /var/lib/tor/hidden_service_ssh/hostname ]
-  do
-    echo "waiting for Tor hidden service ..."
-    sleep 1
-  done && \
-  cat /var/lib/tor/hidden_service_ssh/hostname
+  systemctl reload tor
 fi
 
 ### Enable camera and disable camera led
@@ -102,6 +103,21 @@ else
   echo "disable_camera_led=1" >> /boot/config.txt
 fi
 
-### Expand the root filesystem to fill the whole card
-# The original root image size is 4031552
-df / | grep -q " 4031552 " && raspi-config nonint do_expand_rootfs
+### Expand the root filesystem to fill the whole card,
+# if there's more than 10MB of free space on the memory card
+FREEBYTES=$(parted /dev/mmcblk0 unit B print free | grep 'Free Space' | tail -n1 | awk '{print substr($3, 1, length($3)-1)}')
+if [ -n "${FREEBYTES}" ] && [ "${FREEBYTES}" -ge 10485760 ]
+then
+  raspi-config nonint do_expand_rootfs
+fi
+
+### Print hidden SSH service address, if it was successfully enabled
+if [ -d /var/lib/tor/hidden_service_ssh ]
+then
+  while [ ! -e /var/lib/tor/hidden_service_ssh/hostname ]
+  do
+    echo "waiting for Tor hidden service ..."
+    sleep 1
+  done
+  cat /var/lib/tor/hidden_service_ssh/hostname
+fi

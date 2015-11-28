@@ -6,7 +6,7 @@ SSHPUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0AsE3uu/ia2F5jlY8Uq9CcgUjEDp/eK
 NETWORKTEST=$(grep '^deb http' /etc/apt/sources.list.d/* /etc/apt/sources.list 2> /dev/null | awk '{ print $2 }' | head -n1)
 
 ### DEBUG
-set -x
+#set -x
 
 if [ $(id -u) -ne 0 ]
 then
@@ -96,7 +96,12 @@ inst_pkg () {
     apt-get -q update
     APTUPDATED="yes"
   fi
-  apt-get -q -y install "${1}"
+  if [ "$1" = "-d" ]
+  then
+    apt-get -q -d -y install "${2}"
+  else
+    apt-get -q -y install "${1}"
+  fi
 }
 
 restart_service () {
@@ -146,7 +151,7 @@ $PART_START
 p
 w
 EOF
-  # Resize partition after next boot
+  # Resize file system after next boot
   mv /etc/rc.local /etc/rc.local.orig
   cat <<EOF > /etc/rc.local &&
 #!/bin/sh -e
@@ -157,6 +162,7 @@ mv /etc/rc.local.orig /etc/rc.local
 exit 0
 EOF
   chmod +x /etc/rc.local
+  inst_pkg -d dphys-swapfile
 fi
 
 ### Abort, if something goes wrong.

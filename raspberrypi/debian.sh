@@ -1,9 +1,12 @@
 #!/bin/sh
 
-# Options: [--patch <ubuntu.img>]
+# Options: [--patch <debian.img>]
 
 SSHPUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0AsE3uu/ia2F5jlY8Uq9CcgUjEDp/eKvP/Kn9wAyES"
 NETWORKTEST=$(grep '^deb http' /etc/apt/sources.list.d/* /etc/apt/sources.list 2> /dev/null | awk '{ print $2 }' | head -n1)
+
+### DEBUG
+set -x
 
 if [ $(id -u) -ne 0 ]
 then
@@ -33,12 +36,15 @@ then
   fi
   losetup -o $((${SECTORSIZE}*${SECTORCOUNT})) "$LOOPDEV" "$IMG"
   mount "$LOOPDEV" "$WORKDIR"
-  if [ ! -d "${WORKDIR}/usr/lib/raspberrypi/firmware" ] || \
-     [ ! -f "${WORKDIR}/etc/dpkg/origins/ubuntu" ] || \
+  if [ ! -f "${WORKDIR}/var/lib/dpkg/info/raspberrypi-bootloader-nokernel.md5sums" ] || \
+     [ ! -f "${WORKDIR}/etc/dpkg/origins/debian" ] || \
      [ ! -d "${WORKDIR}/usr/local/sbin/" ] || \
      [ ! -f "${WORKDIR}/etc/rc.local" ]
   then
-    printf "Disk %s doesn't contain Ubuntu for Raspberry Pi\n" "$IMG"
+    printf "Disk %s doesn't contain Debian for Raspberry Pi\n" "$IMG"
+    umount "$WORKDIR"
+    losetup -d "$LOOPDEV"
+    rmdir "$WORKDIR"
     exit 1
   fi
   cp "$0" "${WORKDIR}/usr/local/sbin/raspberry-config"
@@ -53,10 +59,20 @@ then
   exit 0
 fi
 
-if [ ! -e /boot/config.txt ] || \
-   ! dpkg -l | grep -q "^ii\s\+raspberrypi-bootloader"
+if ! dpkg -l | grep -q "^ii\s\+raspberrypi-bootloader"
 then
-  printf "This script only works on Raspberry Pi. https://wiki.ubuntu.com/ARM/RaspberryPi\n"
+  printf "This script only works on Raspberry Pi.\nhttps://wiki.debian.org/RaspberryPi2\nhttps://wiki.ubuntu.com/ARM/RaspberryPi\n"
+  exit 1
+fi
+
+if [ -f /boot/config.txt ]
+then
+  CONFIGTXT="/boot/config.txt"
+elif [ -f /boot/firmware/config.txt ]
+then
+  CONFIGTXT="/boot/firmware/config.txt"
+else
+  printf "Couldn't find /boot/config.txt\n"
   exit 1
 fi
 
@@ -83,13 +99,37 @@ inst_pkg () {
   apt-get -q -y install "${1}"
 }
 
+restart_service () {
+  if which systemctl > /dev/null
+  then
+    systemctl restart $1
+  elif which service > /dev/null
+  then
+    service $1 restart
+  else
+    /etc/init.d/$1 restart
+  fi
+}
+
 printf "%s STARTING\n" "$(date +'%Y-%m-%d %T')"
+
+# Debian Raspberry image has dangerous [trusted=yes] set for apt sources.
+sed -i "s/ \[trusted=yes\] / /" /etc/apt/sources.list
+
+### ZTE MF823 LTE USB Modem
+grep -q "^iface usb0" /etc/network/interfaces || printf "\nallow-hotplug usb0\niface usb0 inet dhcp\n" >> /etc/network/interfaces
+if grep -q "ZTE.*Technologies MSM" /sys/bus/usb/devices/*/product
+then
+  wget -q --referer "http://192.168.0.1/index.html" -O /dev/null "http://192.168.0.1/goform/goform_set_cmd_process?goformId=CONNECT_NETWORK"
+  wget -q --referer "http://192.168.0.1/index.html" -O /dev/null "http://192.168.0.1/goform/goform_set_cmd_process?goformId=SET_CONNECTION_MODE&ConnectionMode=auto_dial"
+fi
 
 ### Expand the root filesystem to fill the whole card,
 # if there's more than 10MB of free space on the memory card
+which parted > /dev/null || inst_pkg parted
 PART_NUM=2
 FREEBYTES=$(parted /dev/mmcblk0 unit B print free | grep 'Free Space' | tail -n1 | awk '{print substr($3, 1, length($3)-1)}')
-if [ -n "${FREEBYTES}" ] && \
+if echo "${FREEBYTES}" | grep -q '^[0-9]\+$' && \
    [ "${FREEBYTES}" -ge 10485760 ] && \
    [ ! -e /dev/mmcblk0p$((${PART_NUM}+1)) ]
 then
@@ -112,6 +152,7 @@ EOF
 #!/bin/sh -e
 resize2fs /dev/mmcblk0p${PART_NUM}
 mv /etc/rc.local.orig /etc/rc.local
+[ "\$(free | grep ^Swap | awk '{ print \$2 }')" = "0" ] && apt-get -q -y install dphys-swapfile
 [ -x /etc/rc.local ] && /etc/rc.local
 exit 0
 EOF
@@ -121,36 +162,41 @@ fi
 ### Abort, if something goes wrong.
 set -e
 
-### ZTE MF823 LTE USB Modem
-grep -q "^iface usb0" /etc/network/interfaces || printf "\nallow-hotplug usb0\niface usb0 inet dhcp\n" >> /etc/network/interfaces
-if lsusb | grep -q "ZTE WCDMA Technologies MSM"
-then
-  wget -q --referer "http://192.168.0.1/index.html" -O /dev/null "http://192.168.0.1/goform/goform_set_cmd_process?goformId=CONNECT_NETWORK"
-  wget -q --referer "http://192.168.0.1/index.html" -O /dev/null "http://192.168.0.1/goform/goform_set_cmd_process?goformId=SET_CONNECTION_MODE&ConnectionMode=auto_dial"
-fi
-
 ### Enable camera and disable camera led
-grep -q "^start_x" /boot/config.txt || echo "start_x=1" >> /boot/config.txt
-grep -q "^disable_camera_led" /boot/config.txt ||  echo "disable_camera_led=1" >> /boot/config.txt
-grep -q "^gpu_mem" /boot/config.txt || echo "gpu_mem=128" >> /boot/config.txt
+grep -q "^start_x" "$CONFIGTXT" || echo "start_x=1" >> "$CONFIGTXT"
+grep -q "^disable_camera_led" "$CONFIGTXT" ||  echo "disable_camera_led=1" >> "$CONFIGTXT"
+grep -q "^gpu_mem" "$CONFIGTXT" || echo "gpu_mem=128" >> "$CONFIGTXT"
 which raspistill > /dev/null || inst_pkg libraspberrypi-bin
 
 ### Enable Hardware Random Number Generator
-if dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096 2> /dev/null && ! which /usr/sbin/rngd > /dev/null
+! lsmod | grep -q ^bcm2708_rng && modprobe -q bcm2708-rng && \
+  ! grep -q "^bcm2708-rng" /etc/modules && echo "bcm2708-rng" >> /etc/modules
+if dd if=/dev/hwrng of=/dev/urandom count=1 bs=4096 2> /dev/null
 then
-  inst_pkg rng-tools
+  which rngd > /dev/null || inst_pkg rng-tools
 fi
 
 ### Configure SSH Server securely - https://stribika.github.io/2015/01/04/secure-secure-shell.html
 # If authorized_keys doesn't exist, create it and add the key
-if [ ! -e ~ubuntu/.ssh/authorized_keys ]
+SSHUSER=root
+# "root" for Debian, "ubuntu" for Ubuntu
+getent passwd ubuntu > /dev/null && SSHUSER=ubuntu
+DIR=$(eval echo "~$SSHUSER")
+if [ ! -e "${DIR}/.ssh/authorized_keys" ]
 then
-  mkdir -p -m 700 ~ubuntu/.ssh
-  chown ubuntu:ubuntu ~ubuntu/.ssh
-  echo ${SSHPUBKEY} >> ~ubuntu/.ssh/authorized_keys
-  chown ubuntu:ubuntu ~ubuntu/.ssh/authorized_keys
+  mkdir -p -m 700 "${DIR}/.ssh"
+  chown ${SSHUSER}:${SSHUSER} "${DIR}/.ssh"
+  echo ${SSHPUBKEY} >> "${DIR}/.ssh/authorized_keys"
+  chown ${SSHUSER}:${SSHUSER} "${DIR}/.ssh/authorized_keys"
 fi
 which sshd > /dev/null || inst_pkg openssh-server
+# WARNING! Raspberry image for Debian ships with default SSH host keys!
+if [ -f /etc/ssh/ssh_host_ed25519_key ] && [ "$(sha256sum /etc/ssh/ssh_host_ed25519_key | awk '{ print $1 }')" = "1be58e9660ebdf4043822a5322a96273b01c9c6d913114506c19d931cef13bf0" ]
+then
+  rm /etc/ssh/ssh_host_*
+  ssh-keygen -q -N '' -t ed25519 -f /etc/ssh/ssh_host_ed25519_key
+  ssh-keygen -q -N '' -t rsa -b 4096 -f /etc/ssh/ssh_host_rsa_key
+fi
 SHASUM=$(cat /etc/ssh/sshd_config /etc/ssh/moduli | sha256sum)
 # Kex, Ciphers, and MACs
 grep -q "^KexAlgorithms " /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
@@ -168,7 +214,7 @@ then
   awk '$5 > 2000' /etc/ssh/moduli > "${HOME}/moduli"
   mv "${HOME}/moduli" /etc/ssh/moduli
 fi
-[ "$SHASUM" != "$(cat /etc/ssh/sshd_config /etc/ssh/moduli | sha256sum)" ] && service ssh restart
+[ "$SHASUM" != "$(cat /etc/ssh/sshd_config /etc/ssh/moduli | sha256sum)" ] && restart_service ssh
 
 ### Tor and hidden SSH service
 if ! which tor > /dev/null
@@ -176,7 +222,7 @@ then
   inst_pkg tor
   echo "HiddenServiceDir /var/lib/tor/hidden_service_ssh" >> /etc/tor/torrc
   echo "HiddenServicePort 22 127.0.0.1:22" >> /etc/tor/torrc
-  service tor reload
+  restart_service tor
 fi
 
 ### Script completed. Remove it from /etc/rc.local

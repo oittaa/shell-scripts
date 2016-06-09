@@ -20,7 +20,7 @@
 # You might want to edit /etc/exim4/exim4.conf.localmacros afterwards
 # and run 'dpkg-reconfigure exim4-config' to configure exim4.
 #
-# Tested with Debian 8.0 (Jessie) and Ubuntu 14.04 (Trusty Tahr).
+# Tested with Debian 8.0 (Jessie) and Ubuntu 16.04 (Xenial Xerus).
 
 ######################################################################
 
@@ -31,7 +31,7 @@ DEFAULT_RELAY_DOMAINS="@mx_secondary/ignore=127.0.0.1"
 
 # The following packages will be installed
 PKG_LIST="clamav-daemon exim4-daemon-heavy spamassassin razor pyzor greylistd \
-    libmail-dkim-perl libclamunrar6 clamav-unofficial-sigs unattended-upgrades"
+    libmail-dkim-perl libclamunrar7 clamav-unofficial-sigs unattended-upgrades"
 
 export LC_ALL=C
 export LANG=C
@@ -152,8 +152,8 @@ do
     else
         PKG_NEEDED="$PKG_NEEDED $PKG_CUR"
         case $PKG_CUR in
-            libclamunrar6) 
-                # Package libclamunrar6 requires non-free repositories in Debian.
+            libclamunrar7)
+                # Package libclamunrar7 requires non-free repositories in Debian.
                 lsb_release -i | grep -q 'Debian$' && \
                     sed -i '/non-free/!s/^\(deb[^#]*\)/\1 non-free/' /etc/apt/sources.list ;;
            clamav-daemon)

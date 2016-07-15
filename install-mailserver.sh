@@ -195,6 +195,11 @@ then
 
     # Enable SpamAssassin and setup Hash-Sharing Systems
     sed -i -e 's/^ENABLED=0/ENABLED=1/' -e 's/^CRON=0/CRON=1/' /etc/default/spamassassin
+    # If you're using systemd (default for jessie), the ENABLED setting is not used.
+    if which systemctl > /dev/null
+    then
+        systemctl enable spamassassin.service
+    fi
     su -s /bin/sh -c "cd; razor-admin -create; razor-admin -discover; pyzor discover" Debian-exim
 
     # Speedup by compilation of ruleset to native code needs to be enabled

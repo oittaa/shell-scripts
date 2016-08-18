@@ -31,7 +31,8 @@ DEFAULT_RELAY_DOMAINS="@mx_secondary/ignore=127.0.0.1"
 
 # The following packages will be installed
 PKG_LIST="clamav-daemon exim4-daemon-heavy spamassassin razor pyzor greylistd \
-    libmail-dkim-perl libclamunrar7 clamav-unofficial-sigs unattended-upgrades"
+    sa-compile libmail-dkim-perl libclamunrar7 clamav-unofficial-sigs \
+    unattended-upgrades"
 
 export LC_ALL=C
 export LANG=C
@@ -101,7 +102,7 @@ show_help () {
 }
 
 restart_service () {
-    if which systemctl > /dev/null
+    if command -v systemctl > /dev/null 2>&1
     then
         systemctl restart $1
     else
@@ -142,7 +143,7 @@ if [ "$(id -u)" != "0" ]
 then
     echo "You must be the superuser to run this script."
     exit 1
-fi 
+fi
 
 for PKG_CUR in $PKG_LIST
 do
@@ -186,17 +187,15 @@ else
     echo "All necessary packages installed!"
 fi
 
-# For Debian Jessie, make sure the new sa-compile package is installed
-which sa-compile > /dev/null || apt-get -q -y install sa-compile
-
 if [ "1" = "$INITIALIZE_SPAM_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Configuring SpamAssassin ###"
 
     # Enable SpamAssassin and setup Hash-Sharing Systems
     sed -i -e 's/^ENABLED=0/ENABLED=1/' -e 's/^CRON=0/CRON=1/' /etc/default/spamassassin
-    # If you're using systemd (default for jessie), the ENABLED setting is not used.
-    if which systemctl > /dev/null
+    # If you're using systemd (default for Debian Jessie), the ENABLED setting
+    # above is not used.
+    if command -v systemctl > /dev/null 2>&1
     then
         systemctl enable spamassassin.service
     fi
@@ -385,21 +384,23 @@ then
     grep -q ^KexAlgorithms /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
     grep -q ^Ciphers /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" >> /etc/ssh/sshd_config
     grep -q ^MACs /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
-    if [ -f /etc/ssh/moduli ]
-    then
-        awk '$5 > 2000' /etc/ssh/moduli > "${HOME}/moduli"
-        LINES=$(wc -l "${HOME}/moduli" | awk '{print $1}')
-    else
-        LINES=0
-    fi
-    if [ $LINES -eq 0 ]
-    then
-        echo  "Generating \"/etc/ssh/moduli\". This might take a while."
-        ssh-keygen -G "${HOME}/moduli.all" -b 4096
-        ssh-keygen -T "${HOME}/moduli" -f "${HOME}/moduli.all"
-        rm "${HOME}/moduli.all"
-    fi
-    cmp --silent /etc/ssh/moduli "${HOME}/moduli" && rm "${HOME}/moduli" || mv "${HOME}/moduli" /etc/ssh/moduli
+    WORKDIR=`mktemp -d --tmpdir -- "mailserver.XXXXXXXXXX"` && {
+        if [ -f /etc/ssh/moduli ]
+        then
+            awk '$5 > 2000' /etc/ssh/moduli > "${WORKDIR}/moduli"
+            LINES=$(wc -l "${WORKDIR}/moduli" | awk '{print $1}')
+        else
+            LINES=0
+        fi
+        if [ 0 -eq $LINES ]
+        then
+            echo  "Generating \"/etc/ssh/moduli\". This might take a while."
+            ssh-keygen -G "${WORKDIR}/moduli.all" -b 4096
+            ssh-keygen -T "${WORKDIR}/moduli" -f "${WORKDIR}/moduli.all"
+        fi
+        cmp --silent /etc/ssh/moduli "${WORKDIR}/moduli" || mv "${WORKDIR}/moduli" /etc/ssh/moduli
+        rm -r -- "${WORKDIR}"
+    }
     restart_service ssh
 fi
 
@@ -408,4 +409,19 @@ restart_service spamassassin
 restart_service clamav-daemon
 /usr/sbin/update-exim4.conf
 restart_service exim4
+
+# UGLY WORKAROUND
+# Clamav startup after installation is broken in version 0.99+dfsg-1ubuntu1.1
+# and 0.99.2+dfsg-0+deb8u1. It needs to be started manually.
+nohup $(
+    command -v systemctl || exit 0
+    systemctl status clamav-freshclam || systemctl restart clamav-freshclam
+    while [ ! -f /var/lib/clamav/daily.cvd ]
+    do
+        sleep 1
+    done
+    sleep 5
+    systemctl status clamav-daemon || systemctl restart clamav-daemon
+) >/dev/null 2>&1 &
+
 echo "All done!"

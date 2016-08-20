@@ -1,16 +1,16 @@
 #!/bin/sh
 set -e
 
+command -v cryptsetup >/dev/null 2>&1 || {
+    echo "Command cryptsetup is missing. Please, install cryptsetup package."
+    exit 1
+}
 [ -f /var/cryptswap ] && {
     echo "/var/cryptswap exists already."
     exit 1
 }
 [ ! -f /etc/crypttab ] && {
     echo "/etc/crypttab is missing."
-    exit 1
-}
-command -v cryptsetup >/dev/null 2>&1 || {
-    echo "Command cryptsetup is missing. Please, install cryptsetup package."
     exit 1
 }
 

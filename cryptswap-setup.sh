@@ -15,6 +15,7 @@ command -v cryptsetup >/dev/null 2>&1 || {
 }
 
 fallocate -l 2G /var/cryptswap
+chmod 600 /var/cryptswap
 grep -q "^cryptswap" /etc/crypttab || echo "cryptswap	/var/cryptswap		/dev/urandom	swap" >> /etc/crypttab
 service cryptdisks reload
 grep -q "^/dev/mapper/cryptswap" /etc/fstab || echo "/dev/mapper/cryptswap none swap sw 0 0" >> /etc/fstab

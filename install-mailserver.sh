@@ -205,6 +205,11 @@ then
     # manually in Debian releases older than Jessie.
     grep -q '^loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody' /etc/spamassassin/*.pre || \
         sed -i 's/^# \(loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody\)/\1/' /etc/spamassassin/v320.pre
+    if ! grep -q '^report' /etc/spamassassin/local.cf
+    then
+        echo 'clear_report_template' >> /etc/spamassassin/local.cf
+        echo 'report "_YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_ autolearn=_AUTOLEARN_ version=_VERSION_"' >> /etc/spamassassin/local.cf
+    fi
     if [ ! -d /var/lib/spamassassin/compiled ]
     then
         echo "SpamAssassin speedup by compilation of ruleset to native code."
@@ -352,7 +357,7 @@ then
 	    !acl           = acl_local_deny_exceptions
 	    spam           = Debian-exim:true
 	    add_header     = X-Spam-Score: $spam_score ($spam_bar)
-	    add_header     = X-Spam-Report: $spam_report
+	    add_header     = X-Spam-Status: $spam_report
 
 	  warn
 	    !authenticated = *

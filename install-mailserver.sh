@@ -250,6 +250,8 @@ then
     sed -i "\#^dc_local_interfaces=#s#'.*'#''#" /etc/exim4/update-exim4.conf.conf
     sed -i "\#^dc_relay_domains=#s#'.*'#'$RELAY_DOMAINS'#" /etc/exim4/update-exim4.conf.conf
     sed -i "\#^dc_other_hostnames=#s#'.*'#'$LOCAL_DOMAINS'#" /etc/exim4/update-exim4.conf.conf
+
+    sed -i "s/^QUEUEINTERVAL='30m'/QUEUEINTERVAL='5m'/" /etc/default/exim4
 fi
 
 # Enable automatic upgrades

@@ -203,10 +203,18 @@ then
 
     # Generate a custom report in the standard X-Spam-Status format and use it
     # later to set a header in Exim. (add_header = X-Spam-Status: $spam_report)
-    if ! grep -q '^report' /etc/spamassassin/local.cf
+    if [ ! -d /var/spool/exim4/.spamassassin ]
     then
-        echo 'clear_report_template' >> /etc/spamassassin/local.cf
-        echo 'report "_YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_ autolearn=_AUTOLEARN_ version=_VERSION_"' >> /etc/spamassassin/local.cf
+        mkdir -p /var/spool/exim4/.spamassassin
+        chmod 700 /var/spool/exim4/.spamassassin
+        touch /var/spool/exim4/.spamassassin/user_prefs
+        chmod 644 /var/spool/exim4/.spamassassin/user_prefs
+        chown Debian-exim:Debian-exim /var/spool/exim4/.spamassassin /var/spool/exim4/.spamassassin/user_prefs
+    fi
+    if ! grep -q '^report' /var/spool/exim4/.spamassassin/user_prefs
+    then
+        echo 'clear_report_template' >> /var/spool/exim4/.spamassassin/user_prefs
+        echo 'report "_YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_ autolearn=_AUTOLEARN_ version=_VERSION_"' >> /var/spool/exim4/.spamassassin/user_prefs
     fi
 
     # Speedup by compilation of ruleset to native code needs to be enabled

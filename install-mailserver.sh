@@ -205,8 +205,7 @@ then
     # later to set a header in Exim. (add_header = X-Spam-Status: $spam_report)
     if [ ! -d /var/spool/exim4/.spamassassin ]
     then
-        mkdir -p /var/spool/exim4/.spamassassin
-        chmod 700 /var/spool/exim4/.spamassassin
+        mkdir -m 700 -p /var/spool/exim4/.spamassassin
         touch /var/spool/exim4/.spamassassin/user_prefs
         chmod 644 /var/spool/exim4/.spamassassin/user_prefs
         chown Debian-exim:Debian-exim /var/spool/exim4/.spamassassin /var/spool/exim4/.spamassassin/user_prefs

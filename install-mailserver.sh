@@ -232,6 +232,24 @@ if [ "1" = "$INITIALIZE_CLAMAV_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Configuring ClamAV ###"
 
+    # UGLY WORKAROUND
+    # ClamAV daemon doesn't start automatically in Debian 8 and Ubuntu 16.04
+    # right after installation, because the virus database files are missing.
+    if command -v systemctl > /dev/null 2>&1 && [ ! -e /etc/systemd/system/clamav-daemon.path ]
+    then
+        cat > /etc/systemd/system/clamav-daemon.path <<- "EOF"
+	[Unit]
+	Description=Path Activation for Clam AntiVirus userspace daemon
+	Documentation=man:clamd(8) man:clamd.conf(5) http://www.clamav.net/lang/en/doc/
+
+	[Path]
+	# Check and wait for database existence before starting up
+	PathExistsGlob=/var/lib/clamav/main.{c[vl]d,inc}
+	PathExistsGlob=/var/lib/clamav/daily.{c[vl]d,inc}
+	EOF
+        systemctl start clamav-daemon.path
+        rm /etc/systemd/system/clamav-daemon.path
+    fi
     # Add ClamAV to Debian-exim group
     groups clamav | grep -q Debian-exim || adduser clamav Debian-exim
     sed -i 's/^AllowSupplementaryGroups false/AllowSupplementaryGroups true/' /etc/clamav/clamd.conf
@@ -426,19 +444,5 @@ restart_service spamassassin
 restart_service clamav-daemon
 /usr/sbin/update-exim4.conf
 restart_service exim4
-
-# UGLY WORKAROUND
-# Clamav startup after installation is broken in version 0.99+dfsg-1ubuntu1.1
-# and 0.99.2+dfsg-0+deb8u1. It needs to be started manually.
-nohup $(
-    command -v systemctl || exit 0
-    systemctl status clamav-freshclam || systemctl restart clamav-freshclam
-    while [ ! -f /var/lib/clamav/daily.cvd ]
-    do
-        sleep 1
-    done
-    sleep 5
-    systemctl status clamav-daemon || systemctl restart clamav-daemon
-) >/dev/null 2>&1 &
 
 echo "All done!"

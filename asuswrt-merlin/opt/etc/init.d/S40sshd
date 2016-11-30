@@ -2,51 +2,57 @@
 
 prefix="/opt"
 PATH=${prefix}/bin:${prefix}/sbin:/sbin:/bin:/usr/sbin:/usr/bin
+OPID=/opt/var/run/sshd.pid
 
 start() {
-        echo "starting sshd..."
+	echo "starting sshd..."
 
-        i=60
-        until `grep -q "^sshd:" /etc/passwd`
-        do
-                i=$(($i-1))
-                if [ "$i" -lt 1 ]
-                then
-                        logger "sshd: sshd user missing from /etc/passwd"
-                        exit 1
-                fi
-                sleep 1
-        done
+	i=60
+	until `grep -q "^sshd:" /etc/passwd`
+	do
+		i=$(($i-1))
+		if [ "$i" -lt 1 ]
+		then
+			logger "sshd: sshd user missing from /etc/passwd"
+			exit 1
+		fi
+		sleep 1
+	done
 
-        /opt/sbin/sshd
-        }
+	/opt/sbin/sshd
+	}
 
 stop() {
-        echo "stopping sshd..."
-        killall sshd
-        }
+	echo "stopping sshd..."
+	kill `cat $OPID`
+	}
+
 status() {
-        echo "PID of sshd is `pidof sshd`"
-        }
+	if [ -f $OPID ]; then
+		echo "PID of sshd is `cat $OPID`"
+	else
+		echo "sshd is not running"
+	fi
+	}
 
 case "$1" in
-        start)
-                start
-                ;;
-        stop)
-                stop
-                ;;
-        restart)
-                stop
-                sleep 3
-                start
-                ;;
-        status) status
-                ;;
-        *)
-                echo "Usage: $0 (start|stop|restart|status)"
-                exit 1
-                ;;
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop
+		sleep 3
+		start
+		;;
+	status) status
+		;;
+	*)
+		echo "Usage: $0 (start|stop|restart|status)"
+		exit 1
+		;;
 esac
 
 exit 0

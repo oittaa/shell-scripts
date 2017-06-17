@@ -38,7 +38,7 @@ export LC_ALL=C
 export LANG=C
 export DEBIAN_FRONTEND=noninteractive
 
-usage () {
+usage() {
     cat <<- EOF
 	Usage: $0 [OPTION]...
 	
@@ -51,7 +51,7 @@ usage () {
     exit 1
 }
 
-show_help () {
+show_help() {
     cat <<- EOF
 	Usage: $0 [OPTION]...
 	This script installs everything needed for a basic filtering mail server.
@@ -101,13 +101,21 @@ show_help () {
     exit 0
 }
 
-restart_service () {
+restart_service() {
     if command -v systemctl > /dev/null 2>&1
     then
         systemctl restart $1
     else
         /etc/init.d/$1 restart
     fi
+}
+
+verlte() {
+    [  "$1" = "$(printf "%s\n%s" "$1" "$2" | sort -V | head -n1)" ]
+}
+
+verlt() {
+    [ "$1" = "$2" ] && return 1 || verlte "$1" "$2"
 }
 
 # Set internal variables
@@ -199,7 +207,9 @@ then
     then
         systemctl enable spamassassin.service
     fi
-    su -s /bin/sh -c "cd; razor-admin -create; razor-admin -discover; pyzor discover" Debian-exim
+    su -s /bin/sh -c "cd; razor-admin -create; razor-admin -discover" Debian-exim
+    # New (Debian 9.0 Stretch onwards) Pyzor releases don't have "discover" command
+    verlt "$(dpkg-query -Wf'${Version}' pyzor)" "1:1.0.0" && su -s /bin/sh -c "cd; pyzor discover" Debian-exim
 
     # Generate a custom report in the standard X-Spam-Status format and use it
     # later to set a header in Exim. (add_header = X-Spam-Status: $spam_report)
@@ -419,7 +429,7 @@ then
     grep -q ^KexAlgorithms /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
     grep -q ^Ciphers /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" >> /etc/ssh/sshd_config
     grep -q ^MACs /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
-    WORKDIR=`mktemp -d --tmpdir -- "mailserver.XXXXXXXXXX"` && {
+    WORKDIR=$(mktemp -d --tmpdir -- "mailserver.XXXXXXXXXX") && {
         if [ -f /etc/ssh/moduli ]
         then
             awk '$5 > 2000' /etc/ssh/moduli > "${WORKDIR}/moduli"

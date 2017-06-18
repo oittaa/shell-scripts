@@ -286,12 +286,8 @@ if [ "1" = "$INITIALIZE_APT_CONFIG" ] || [ "1" = "$FORCE" ]
 then
     echo "### Enabling Unattended Upgrades ###"
 
-    cat > /etc/apt/apt.conf.d/20auto-upgrades <<- "EOF"
-	APT::Periodic::Update-Package-Lists "1";
-	APT::Periodic::Unattended-Upgrade "1";
-	EOF
-    chown root:root /etc/apt/apt.conf.d/20auto-upgrades
-    chmod 644 /etc/apt/apt.conf.d/20auto-upgrades
+    echo "unattended-upgrades unattended-upgrades/enable_auto_updates boolean true" | debconf-set-selections
+    dpkg-reconfigure -f noninteractive unattended-upgrades
 fi
 
 ##########BEGIN# Create macro and acl files to /etc/exim4/ ##########

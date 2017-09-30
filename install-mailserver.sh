@@ -32,7 +32,7 @@ DEFAULT_RELAY_DOMAINS="@mx_secondary/ignore=127.0.0.1"
 # The following packages will be installed
 PKG_LIST="clamav-daemon exim4-daemon-heavy spamassassin razor pyzor greylistd \
     sa-compile libmail-dkim-perl libclamunrar7 clamav-unofficial-sigs \
-    unattended-upgrades"
+    unattended-upgrades bind9"
 
 export LC_ALL=C
 export LANG=C
@@ -173,6 +173,8 @@ do
                 INITIALIZE_SPAM_CONFIG=1 ;;
             unattended-upgrades)
                 INITIALIZE_APT_CONFIG=1 ;;
+            bind9)
+                INITIALIZE_BIND_CONFIG=1 ;;
             *)
                 ;;
         esac
@@ -288,6 +290,33 @@ then
 
     echo "unattended-upgrades unattended-upgrades/enable_auto_updates boolean true" | debconf-set-selections
     dpkg-reconfigure -f noninteractive unattended-upgrades
+fi
+
+# Configure BIND to listen on local interfaces
+if [ "1" = "$INITIALIZE_BIND_CONFIG" ] || [ "1" = "$FORCE" ]
+then
+    echo "### Configuring BIND ###"
+
+    sed -i "s/^\tlisten-on-v6 { any; };/\tlisten-on-v6 { ::1; };\n\tlisten-on { 127.0.0.1; };/" /etc/bind/named.conf.options
+    restart_service bind9
+
+    if ! grep -q '^nameserver 127.0.0.1' /etc/resolv.conf
+    then
+        cp -a /etc/resolv.conf "/etc/resolv.conf.backup$(date +'%Y-%m-%d-%H%M%S')"
+        echo "nameserver 127.0.0.1" > /etc/resolv.conf
+    fi
+
+    if [ ! -f /etc/cron.d/resolv ]
+    then
+        cat > /etc/cron.d/resolv <<- "EOF"
+	# Replace resolv.conf
+	#
+	
+	* * * * * root grep -q 127.0.0.1 /etc/resolv.conf || echo "nameserver 127.0.0.1" > /etc/resolv.conf
+	EOF
+        chown root:root /etc/cron.d/resolv
+        chmod 644 /etc/cron.d/resolv
+    fi
 fi
 
 ##########BEGIN# Create macro and acl files to /etc/exim4/ ##########

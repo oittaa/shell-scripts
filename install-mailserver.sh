@@ -20,7 +20,7 @@
 # You might want to edit /etc/exim4/exim4.conf.localmacros afterwards
 # and run 'dpkg-reconfigure exim4-config' to configure exim4.
 #
-# Tested with Debian 8.0 (Jessie) and Ubuntu 16.04 (Xenial Xerus).
+# Tested with Debian 9.0 (Stretch) and Ubuntu 18.04 (Bionic Beaver).
 
 ######################################################################
 
@@ -31,8 +31,7 @@ DEFAULT_RELAY_DOMAINS="@mx_secondary/ignore=127.0.0.1"
 
 # The following packages will be installed
 PKG_LIST="clamav-daemon exim4-daemon-heavy spamassassin razor pyzor greylistd \
-    sa-compile libmail-dkim-perl libclamunrar7 clamav-unofficial-sigs \
-    unattended-upgrades bind9"
+    sa-compile libmail-dkim-perl libclamunrar7 unattended-upgrades bind9"
 
 export LC_ALL=C
 export LANG=C
@@ -186,8 +185,8 @@ then
     [ "$PKG_INSTALLED" != "" ] && \
         printf "Necessary packages already installed:%s\n" "$PKG_INSTALLED"
     printf "Installing following new packages:%s\n" "$PKG_NEEDED"
-    apt-get -q update
-    apt-get -q -y install $PKG_NEEDED
+    apt -q update
+    apt -q -y install $PKG_NEEDED
     if [ "$?" != "0" ]
     then
         echo "Something went wrong. Aborting!"
@@ -265,9 +264,6 @@ then
     # Add ClamAV to Debian-exim group
     groups clamav | grep -q Debian-exim || adduser clamav Debian-exim
     sed -i 's/^AllowSupplementaryGroups false/AllowSupplementaryGroups true/' /etc/clamav/clamd.conf
-
-    # Install third-party ClamAV signature databases.
-    su -s /bin/sh -c "/usr/sbin/clamav-unofficial-sigs" clamav
 fi
 
 # Configure Exim to listen on all interfaces, and set relay and recipient domains.
@@ -281,6 +277,7 @@ then
     sed -i "\#^dc_other_hostnames=#s#'.*'#'$LOCAL_DOMAINS'#" /etc/exim4/update-exim4.conf.conf
 
     sed -i "s/^QUEUEINTERVAL='30m'/QUEUEINTERVAL='5m'/" /etc/default/exim4
+    sed -i "s/^\trotate 10$/\trotate 30/" /etc/logrotate.d/exim4-base
 fi
 
 # Enable automatic upgrades
@@ -434,45 +431,6 @@ then
     chmod 644 /etc/exim4/check_data_local_acl
 fi
 ##########END# Create macro and acl files to /etc/exim4/ ##########
-
-# Secure SSH configuration
-# https://stribika.github.io/2015/01/04/secure-secure-shell.html
-if [ -f /etc/ssh/sshd_config ]
-then
-    echo "### Configuring SSH Server ###"
-    sed -i 's;^\s*\(HostKey\s\+/etc/ssh/ssh_host_\(dsa\|ecdsa\)_key\)$;#\1;' /etc/ssh/sshd_config
-    if [ -f /etc/ssh/ssh_host_rsa_key.pub ]
-    then
-        KEYSIZE=$(ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key.pub | awk '{print $1}')
-        if [ 4096 -gt "$KEYSIZE" ]
-        then
-            echo "Removing old insecure RSA key and generating a new one."
-            rm /etc/ssh/ssh_host_rsa_key.pub /etc/ssh/ssh_host_rsa_key
-            ssh-keygen -t rsa -b 4096 -f /etc/ssh/ssh_host_rsa_key -q -N "" < /dev/null
-        fi
-    fi
-    grep -q ^KexAlgorithms /etc/ssh/sshd_config || echo "KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256" >> /etc/ssh/sshd_config
-    grep -q ^Ciphers /etc/ssh/sshd_config || echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" >> /etc/ssh/sshd_config
-    grep -q ^MACs /etc/ssh/sshd_config || echo "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com" >> /etc/ssh/sshd_config
-    WORKDIR=$(mktemp -d --tmpdir -- "mailserver.XXXXXXXXXX") && {
-        if [ -f /etc/ssh/moduli ]
-        then
-            awk '$5 > 2000' /etc/ssh/moduli > "${WORKDIR}/moduli"
-            LINES=$(wc -l "${WORKDIR}/moduli" | awk '{print $1}')
-        else
-            LINES=0
-        fi
-        if [ 0 -eq $LINES ]
-        then
-            echo  "Generating \"/etc/ssh/moduli\". This might take a while."
-            ssh-keygen -G "${WORKDIR}/moduli.all" -b 4096
-            ssh-keygen -T "${WORKDIR}/moduli" -f "${WORKDIR}/moduli.all"
-        fi
-        cmp --silent /etc/ssh/moduli "${WORKDIR}/moduli" || mv "${WORKDIR}/moduli" /etc/ssh/moduli
-        rm -r -- "${WORKDIR}"
-    }
-    restart_service ssh
-fi
 
 # Generate Exim configuration files and restart the services.
 restart_service spamassassin

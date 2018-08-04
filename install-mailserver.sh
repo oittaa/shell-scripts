@@ -227,10 +227,6 @@ then
         echo 'report "_YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_ autolearn=_AUTOLEARN_ version=_VERSION_"' >> /var/spool/exim4/.spamassassin/user_prefs
     fi
 
-    # Speedup by compilation of ruleset to native code needs to be enabled
-    # manually in Debian releases older than Jessie.
-    grep -q '^loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody' /etc/spamassassin/*.pre || \
-        sed -i 's/^# \(loadplugin Mail::SpamAssassin::Plugin::Rule2XSBody\)/\1/' /etc/spamassassin/v320.pre
     if [ ! -d /var/lib/spamassassin/compiled ]
     then
         echo "SpamAssassin speedup by compilation of ruleset to native code."
@@ -297,22 +293,16 @@ then
     sed -i "s/^\tlisten-on-v6 { any; };/\tlisten-on-v6 { ::1; };\n\tlisten-on { 127.0.0.1; };/" /etc/bind/named.conf.options
     restart_service bind9
 
-    if ! grep -q '^nameserver 127.0.0.1' /etc/resolv.conf
+    if [ -f /etc/dhcp/dhclient.conf ]
     then
-        cp -a /etc/resolv.conf "/etc/resolv.conf.backup$(date +'%Y-%m-%d-%H%M%S')"
-        echo "nameserver 127.0.0.1" > /etc/resolv.conf
+         grep -q '^supersede domain-name-servers 127.0.0.1;' /etc/dhcp/dhclient.conf || \
+             echo "supersede domain-name-servers 127.0.0.1;" >> /etc/dhcp/dhclient.conf
     fi
 
-    if [ ! -f /etc/cron.d/resolv ]
+    if ! grep -q '^nameserver 127.0.0.1' /etc/resolv.conf
     then
-        cat > /etc/cron.d/resolv <<- "EOF"
-	# Replace resolv.conf
-	#
-	
-	* * * * * root grep -q 127.0.0.1 /etc/resolv.conf || echo "nameserver 127.0.0.1" > /etc/resolv.conf
-	EOF
-        chown root:root /etc/cron.d/resolv
-        chmod 644 /etc/cron.d/resolv
+        cp -a /etc/resolv.conf "/etc/resolv.conf.backup.$(date +'%Y-%m-%d-%H%M%S')"
+        echo "nameserver 127.0.0.1" > /etc/resolv.conf
     fi
 fi
 
@@ -322,6 +312,10 @@ then
     cat > /etc/exim4/exim4.conf.localmacros <<- "EOF"
 	CHECK_RCPT_LOCAL_ACL_FILE = /etc/exim4/check_rcpt_local_acl
 	CHECK_DATA_LOCAL_ACL_FILE = /etc/exim4/check_data_local_acl
+
+	# Tarpit spam at really high scores.
+	# Comment out to disable spam tarpitting.
+	SPAM_TARPIT_SCORE = 30
 
 	# Reject spam at high scores.
 	# Comment out to disable spam rejection.
@@ -388,6 +382,18 @@ then
 	    message        = This message was detected as possible malware ($malware_name).
 	    log_message    = Malware ($malware_name) for $recipients
 	    malware        = *
+
+	.ifdef SPAM_TARPIT_SCORE
+	# Tarpit spam
+	  defer
+	    !authenticated = *
+	    !acl           = acl_local_deny_exceptions
+	    spam           = Debian-exim:true
+	    condition      = ${if >{$spam_score_int}{${eval10:10*${sg{SPAM_TARPIT_SCORE}{[.].*}{}}}}{1}{0}}
+	    delay          = 900s
+	    message        = Please try again later
+	    log_message    = spam tarpitted (score $spam_score) from <$sender_address> to <$recipients>.
+	.endif
 
 	.ifdef SPAM_REJECT_SCORE
 	# Permanently reject spam

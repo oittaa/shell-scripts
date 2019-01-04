@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#    Copyright 2014 Eero Vuojolahti <eero@vuojolahti.com>
+#    Copyright 2019 Eero Vuojolahti <eero@vuojolahti.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ DEFAULT_RELAY_DOMAINS="@mx_secondary/ignore=127.0.0.1"
 
 # The following packages will be installed
 PKG_LIST="clamav-daemon exim4-daemon-heavy spamassassin razor pyzor greylistd \
-    sa-compile libmail-dkim-perl libclamunrar7 unattended-upgrades bind9"
+    sa-compile libmail-dkim-perl libclamunrar7 unattended-upgrades bind9 wget"
 
 export LC_ALL=C
 export LANG=C
@@ -107,14 +107,6 @@ restart_service() {
     else
         /etc/init.d/$1 restart
     fi
-}
-
-verlte() {
-    [  "$1" = "$(printf "%s\n%s" "$1" "$2" | sort -V | head -n1)" ]
-}
-
-verlt() {
-    [ "$1" = "$2" ] && return 1 || verlte "$1" "$2"
 }
 
 # Set internal variables
@@ -202,15 +194,12 @@ then
 
     # Enable SpamAssassin and setup Hash-Sharing Systems
     sed -i -e 's/^ENABLED=0/ENABLED=1/' -e 's/^CRON=0/CRON=1/' /etc/default/spamassassin
-    # If you're using systemd (default for Debian Jessie), the ENABLED setting
-    # above is not used.
+    # If you're using systemd (default), the ENABLED setting above isn't used.
     if command -v systemctl > /dev/null 2>&1
     then
         systemctl enable spamassassin.service
     fi
     su -s /bin/sh -c "cd; razor-admin -create; razor-admin -discover" Debian-exim
-    # New (Debian 9.0 Stretch onwards) Pyzor releases don't have "discover" command
-    verlt "$(dpkg-query -Wf'${Version}' pyzor)" "1:1.0.0" && su -s /bin/sh -c "cd; pyzor discover" Debian-exim
 
     # Generate a custom report in the standard X-Spam-Status format and use it
     # later to set a header in Exim. (add_header = X-Spam-Status: $spam_report)
@@ -227,11 +216,45 @@ then
         echo 'report "_YESNO_, score=_SCORE_ required=_REQD_ tests=_TESTS_ autolearn=_AUTOLEARN_ version=_VERSION_"' >> /var/spool/exim4/.spamassassin/user_prefs
     fi
 
-    if [ ! -d /var/lib/spamassassin/compiled ]
+    if [ ! -f /etc/cron.hourly/spamassassin-phishing ]
     then
-        echo "SpamAssassin speedup by compilation of ruleset to native code."
-        su -c "sa-compile" debian-spamd
-        chmod -R go-w,go+rX /var/lib/spamassassin/compiled
+        cat > /etc/cron.hourly/spamassassin-phishing <<- "EOF"
+		#!/bin/sh
+		
+		PHISHTANK_API_KEY=""
+		
+		set -e
+		
+		if [ ! -e /var/lib/spamassassin/phishing ]
+		then
+		    mkdir -p /var/lib/spamassassin/phishing
+		    chown debian-spamd:debian-spamd /var/lib/spamassassin/phishing
+		fi
+		cd /var/lib/spamassassin/phishing
+		
+		if [ -n "$PHISHTANK_API_KEY" ]
+		then
+		    PHISHTANK_URL="https://data.phishtank.com/data/${PHISHTANK_API_KEY}/online-valid.csv"
+		else
+		    PHISHTANK_URL="https://data.phishtank.com/data/online-valid.csv"
+		fi
+		
+		su -c "wget -N -q 'https://openphish.com/feed.txt'" debian-spamd
+		su -c "wget -N -q '$PHISHTANK_URL'" debian-spamd
+		EOF
+        chown root:root /etc/cron.hourly/spamassassin-phishing
+        chmod 755 /etc/cron.hourly/spamassassin-phishing
+        /etc/cron.hourly/spamassassin-phishing
+    fi
+
+    # Enable HashBL and Phishing plugins
+    if ! grep -q '^loadplugin Mail::SpamAssassin::Plugin::HashBL' /etc/spamassassin/v342.pre
+    then
+        sed -i 's/^# loadplugin Mail::SpamAssassin::Plugin::HashBL$/loadplugin Mail::SpamAssassin::Plugin::HashBL\nheader   HASHBL_EMAIL       eval:check_hashbl_emails('\''ebl.msbl.org'\'')\ndescribe HASHBL_EMAIL       Message contains email address found on EBL/' /etc/spamassassin/v342.pre
+    fi
+    if ! grep -q '^loadplugin Mail::SpamAssassin::Plugin::Phishing' /etc/spamassassin/v342.pre
+    then
+        sed -i 's/^# loadplugin Mail::SpamAssassin::Plugin::Phishing$/loadplugin Mail::SpamAssassin::Plugin::Phishing\nifplugin Mail::SpamAssassin::Plugin::Phishing\n  phishing_openphish_feed \/var\/lib\/spamassassin\/phishing\/feed.txt\n  phishing_phishtank_feed \/var\/lib\/spamassassin\/phishing\/online-valid.csv\n  body     URI_PHISHING      eval:check_phishing()\n  describe URI_PHISHING      Url match phishing in feed\nendif/' /etc/spamassassin/v342.pre
     fi
 fi
 
@@ -240,7 +263,7 @@ then
     echo "### Configuring ClamAV ###"
 
     # UGLY WORKAROUND
-    # ClamAV daemon doesn't start automatically in Debian 8 and Ubuntu 16.04
+    # ClamAV daemon doesn't start automatically in Debian 9 and Ubuntu 18.04
     # right after installation, because the virus database files are missing.
     if command -v systemctl > /dev/null 2>&1 && [ ! -e /etc/systemd/system/clamav-daemon.path ]
     then
